@@ -1,4 +1,5 @@
-import pup from 'puppeteer';
+import pup from 'puppeteer-extra';
+import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import archiver from 'archiver';
 import fetch from 'node-fetch';
 import { JSDOM } from 'jsdom';
@@ -51,6 +52,38 @@ const JUSTIFY_CSS = `
 	}
 `;
 
+pup.use(StealthPlugin());
+
+async function autoScroll(page) {
+	await page.evaluate(async () => {
+		await new Promise(resolve => {
+			let totalHeight = 0;
+			const distance = 100;
+			const timer = setInterval(() => {
+				const { scrollHeight } = document.body;
+				window.scrollBy(0, distance);
+				totalHeight += distance;
+
+				if (totalHeight >= scrollHeight) {
+					clearInterval(timer);
+					resolve(undefined);
+				}
+			}, 100);
+		});
+	});
+}
+const patchUserAgent = async page => {
+	const userAgent = await page.evaluate('navigator.userAgent');
+	UA = userAgent
+		.replace('HeadlessChrome', 'Chrome')
+		.replace(
+			'Macintosh; Intel Mac OS X 11_0_0',
+			'Windows NT 10.0; Win64; x64'
+		)
+		.replace('X11; Linux x86_64', 'Windows NT 10.0; Win64; x64');
+	await page.setUserAgent(UA);
+};
+
 const enhancePage = function (dom) {
 	// Note: the order of the enhancements matters!
 	[
@@ -81,7 +114,7 @@ function configure() {
 	}
 }
 
-function launch(options, size) {
+async function launch(options, size) {
 	/*
 		Produce tagged PDFs, better for accessibility;
 		Hopefully will also produce an Outline (ToC) eventually.
@@ -97,7 +130,7 @@ function launch(options, size) {
 		args = args.concat(['--no-sandbox', '--disable-setuid-sandbox']);
 	}
 
-	return pup.launch({
+	const browser = await pup.launch({
 		headless: true,
 		args,
 		defaultViewport: {
@@ -110,6 +143,11 @@ function launch(options, size) {
 			...size
 		}
 	});
+
+	const page = await browser.newPage();
+	await patchUserAgent(page);
+	await page.close();
+	return browser;
 }
 
 /*
@@ -154,28 +192,19 @@ async function fetchContent(ref, fetchOptions = {}) {
 		return readFile(url, 'utf8');
 	}
 
-	/*
-		Must ensure that the URL is properly encoded.
-		See: https://github.com/danburzo/percollate/pull/83
-	 */
-	return fetch(url.href, {
-		...fetchOptions,
-		headers: {
-			...fetchOptions.headers,
-			'user-agent': UA
-		}
-	}).then(response => {
-		let ct = (response.headers.get('Content-Type') || '').trim();
-		if (ct.indexOf(';') > -1) {
-			ct = ct.split(';')[0].trim();
-		}
-		if (!accepted_content_types.has(ct)) {
-			throw new Error(
-				`URL ${url.href} has unsupported content type: ${ct}`
-			);
-		}
-		return response.textConverted();
+	const browser = await launch({ sandbox: false });
+	const page = await browser.newPage();
+	await page.goto(url, {
+		waitUntil: 'networkidle2'
 	});
+	await autoScroll(page);
+	const content = await page.evaluate(
+		() => document.documentElement.outerHTML
+	);
+	if (!content.length) throw Error('empty content!');
+	await page.close();
+	await browser.close();
+	return `<!DOCTYPE html>\n${content}`;
 }
 
 async function cleanup(url, options) {
@@ -216,7 +245,7 @@ async function cleanup(url, options) {
 
 		out.write(`Enhancing web page: ${url}`);
 
-		/* 
+		/*
 			Run enhancements
 			----------------
 		*/
@@ -234,8 +263,8 @@ async function cleanup(url, options) {
 				'anchor'
 			],
 			/*
-				Change Readability's serialization to return 
-				a DOM element (instead of a HTML string) 
+				Change Readability's serialization to return
+				a DOM element (instead of a HTML string)
 				as the `.content` property returned from `.parse()`
 
 				This makes it easier for us to run subsequent
@@ -281,7 +310,7 @@ async function cleanup(url, options) {
 
 		/*
 			Select the appropriate serialization method
-			based on the bundle target. EPUBs need the 
+			based on the bundle target. EPUBs need the
 			content to be XHTML (produced by a XML serializer),
 			rather than normal HTML.
 		 */
@@ -293,7 +322,7 @@ async function cleanup(url, options) {
 			: arr => arr.map(el => el.innerHTML).join('');
 
 		/*
-			When dompurify returns a DOM node, it always wraps it 
+			When dompurify returns a DOM node, it always wraps it
 			in a HTMLBodyElement. We only need its children.
 		 */
 		const sanitize_to_dom = dirty =>
@@ -612,7 +641,7 @@ async function html(urls, options) {
 	Produce an EPUB file
 	--------------------
 
-	Reference: 
+	Reference:
 
 		https://www.ibm.com/developerworks/xml/tutorials/x-epubtut/index.html
  */
