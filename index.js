@@ -58,7 +58,7 @@ async function autoScroll(page) {
 	await page.evaluate(async () => {
 		await new Promise(resolve => {
 			let totalHeight = 0;
-			const distance = 100;
+			const distance = document.body.clientHeight / 2;
 			const timer = setInterval(() => {
 				const { scrollHeight } = document.body;
 				window.scrollBy(0, distance);
@@ -193,14 +193,19 @@ async function fetchContent(ref, fetchOptions = {}) {
 	}
 
 	const browser = await launch({ sandbox: false });
+	console.log('Browser');
 	const page = await browser.newPage();
+	console.log('Page');
 	await page.goto(url, {
 		waitUntil: 'networkidle2'
 	});
+	console.log('Goto');
 	await autoScroll(page);
+	console.log('scroll');
 	const content = await page.evaluate(
 		() => document.documentElement.outerHTML
 	);
+	console.log('content');
 	if (!content.length) throw Error('empty content!');
 	await page.close();
 	await browser.close();
