@@ -469,6 +469,7 @@ async function bundlePdf(items, options) {
 	const output_path = outputPath(items, options, '.pdf');
 
 	let buffer = await page.pdf({
+                timeout: 300000,
 		preferCSSPageSize: true,
 		displayHeaderFooter: true,
 		headerTemplate: header.body.innerHTML,
