@@ -193,19 +193,14 @@ async function fetchContent(ref, fetchOptions = {}) {
 	}
 
 	const browser = await launch({ sandbox: false });
-	console.log('Browser');
 	const page = await browser.newPage();
-	console.log('Page');
 	await page.goto(url, {
 		waitUntil: 'networkidle2'
 	});
-	console.log('Goto');
 	await autoScroll(page);
-	console.log('scroll');
 	const content = await page.evaluate(
 		() => document.documentElement.outerHTML
 	);
-	console.log('content');
 	if (!content.length) throw Error('empty content!');
 	await page.close();
 	await browser.close();
@@ -469,7 +464,7 @@ async function bundlePdf(items, options) {
 	const output_path = outputPath(items, options, '.pdf');
 
 	let buffer = await page.pdf({
-                timeout: 300000,
+		timeout: 300000,
 		preferCSSPageSize: true,
 		displayHeaderFooter: true,
 		headerTemplate: header.body.innerHTML,
