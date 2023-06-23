@@ -131,7 +131,7 @@ async function launch(options, size) {
 	}
 
 	const browser = await pup.launch({
-		headless: true,
+		headless: 'new',
 		args,
 		defaultViewport: {
 			// Emulate retina display (@2x)...
